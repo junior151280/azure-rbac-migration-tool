@@ -1,0 +1,33 @@
+{
+  "SourceSubscriptions": [
+    {
+      "SubscriptionId": "cad9e0b6-be6e-4cb0-a4bc-3f81708540f9",
+      "Name": "ME-MngEnvMCAP162297-jailtons-1",
+      "ResourceGroups": [
+        "rg-poc-service-bus"
+      ]
+    }
+  ],
+  "TargetSubscription": {
+    "SubscriptionId": "cad9e0b6-be6e-4cb0-a4bc-3f81708540f9",
+    "Name": "ME-MngEnvMCAP162297-jailtons-1",
+    "ResourceGroups": [
+      "demo-rabac-002"
+    ]
+  },
+  "ServicePrincipal": {
+    "TenantId": "",
+    "ClientId": "",
+    "ClientSecret": "",
+    "ClientSecretKeyVaultUrl": "https://your-keyvault.vault.azure.net/secrets/sp-secret"
+  },
+  "Settings": {
+    "CsvMappingFile": "config/rbac-mapping-new.csv",
+    "ExportedRbacFile": "exports/rbac-export.json",
+    "MaxRetryAttempts": 3,
+    "RetryDelaySeconds": 5,
+    "LogLevel": "Information",
+    "SkipExistingAssignments": true,
+    "Operation": "Export"
+  }
+}
