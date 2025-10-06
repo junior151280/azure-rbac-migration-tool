@@ -1,37 +1,38 @@
 # Azure RBAC Migration Tool
 
-Uma automação PowerShell para migrar permissões RBAC entre subscriptions do Azure usando APIs REST.
+Uma automação PowerShell para migrar permissões RBAC entre subscriptions do Azure usando APIs REST, com transformações otimizadas e estrutura simplificada.
 
 ## 📋 Funcionalidades
 
-- **Exportação de Permissões**: Lista todas as permissões RBAC de Resource Groups específicos
-- **Importação com Mapeamento**: Aplica permissões em nova subscription baseado em mapeamento CSV
-- **Autenticação Segura**: Utiliza Service Principal com suporte a Azure Key Vault
-- **Tratamento de Erros**: Skip e continue em erros + retry logic
-- **Logging Detalhado**: Arquivos separados para sucessos e erros
-- **Validação Completa**: Valida CSV, principals, resource groups e permissions
-- **Relatórios**: Gera relatórios JSON detalhados de todas as operações
+- **Exportação Otimizada**: Lista permissões RBAC com métodos API otimizados para subscription completa
+- **Transformações Inteligentes**: Sistema de mapeamento CSV com Type columns para transformações direcionadas
+- **Autenticação Flexível**: Service Principal com suporte a config.json e Azure Key Vault
+- **Processamento Eficiente**: Evita transformações desnecessárias em campos vazios
+- **Tratamento de Erros Robusto**: Retry logic, detecção de conflitos e permissões existentes
+- **Logging Estruturado**: Sistema de logging categorizado com diferentes níveis
+- **Validação Inteligente**: Verifica duplicatas e valida permissões antes da aplicação
+- **Relatórios Detalhados**: Estatísticas completas e rastreamento de transformações
 
 ## 🏗️ Estrutura do Projeto
 
 ```
 zurich-rbac-import/
-├── src/                          # Módulos PowerShell
-│   ├── AzureAuthenticator.psm1   # Autenticação com Service Principal
-│   ├── AzureRbacManager.psm1     # Gerenciamento de RBAC via APIs REST
-│   ├── Logger.psm1               # Sistema de logging estruturado
-│   ├── CsvProcessor.psm1         # Processamento e validação de CSV
-│   └── RbacImporter.psm1         # Importação e aplicação de permissões
-├── config/                       # Arquivos de configuração
-│   └── config.json               # Configuração principal
+├── src/                          # Módulos PowerShell (arquitetura modular)
+│   ├── AzureAuthenticator.psm1   # Autenticação com Service Principal e Key Vault
+│   ├── AzureRbacManager.psm1     # APIs REST otimizadas para RBAC
+│   ├── Logger.psm1               # Sistema de logging estruturado e categorizado
+│   ├── CsvProcessor.psm1         # Processamento CSV com validação Type-aware
+│   ├── RbacMigrator.psm1         # Migração com transformações inteligentes
+│   └── RbacTransformer.psm1      # Engine de transformações direcionadas
+├── config/                       # Configuração centralizada
+│   ├── config.json               # Configuração principal (SourceSubscriptions array)
+│   └── rbac-mapping-new.csv      # Mapeamento com Type columns
 ├── examples/                     # Exemplos e templates
-│   ├── rbac-mapping.csv          # Template do arquivo CSV
-│   ├── Export-Only.ps1           # Exemplo de exportação
-│   ├── Validate-Only.ps1         # Exemplo de validação
-│   └── Full-Process.ps1          # Processo completo
-├── logs/                         # Arquivos de log (gerados automaticamente)
-├── exports/                      # Arquivos de exportação
-└── Start-RbacMigration.ps1       # Script principal
+├── logs/                         # Logs estruturados (auto-gerados)
+├── output/                       # Arquivos de saída
+├── Start-RbacMigration.ps1       # Script principal (versão completa)
+├── Start-RbacMigrationSimple.ps1 # Script simplificado (versão otimizada)
+└── Debug-Transformation.ps1     # Ferramenta de debug de transformações
 ```
 
 ## ⚙️ Configuração
@@ -68,16 +69,24 @@ Edite `config/config.json`:
   ],
   "TargetSubscription": {
     "SubscriptionId": "11111111-1111-1111-1111-111111111111",
-    "Name": "Subscription Destino"
+    "Name": "Subscription Destino",
+    "ResourceGroups": [
+      "rg-new-web",
+      "rg-new-data"
+    ]
   },
-  "ServicePrincipal": {
+  "Authentication": {
     "TenantId": "22222222-2222-2222-2222-222222222222",
     "ClientId": "33333333-3333-3333-3333-333333333333",
     "ClientSecretKeyVaultUrl": "https://kv-exemplo.vault.azure.net/secrets/sp-secret"
   },
+  "ServicePrincipal": {
+    "TenantId": "22222222-2222-2222-2222-222222222222",
+    "ClientId": "33333333-3333-3333-3333-333333333333",
+    "ClientSecret": "client-secret-direto"
+  },
   "Settings": {
-    "CsvMappingFile": "examples/rbac-mapping.csv",
-    "ExportedRbacFile": "exports/rbac-export.json",
+    "WhatIfMode": false,
     "MaxRetryAttempts": 3,
     "RetryDelaySeconds": 5,
     "LogLevel": "Information",
@@ -86,35 +95,58 @@ Edite `config/config.json`:
 }
 ```
 
-### 3. Arquivo CSV de Mapeamento
+### 3. Arquivo CSV de Mapeamento com Type Columns
 
-Crie o arquivo CSV com o mapeamento das permissões:
+Crie o arquivo CSV `config/rbac-mapping-new.csv` com o mapeamento otimizado:
 
 ```csv
-SourceSubscriptionId,SourceResourceGroup,SourcePrincipalId,SourceRoleDefinition,TargetSubscriptionId,TargetResourceGroup,TargetPrincipalId,TargetRoleDefinition
-00000000-0000-0000-0000-000000000000,rg-prod-web,aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa,Contributor,11111111-1111-1111-1111-111111111111,rg-new-web,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb,Contributor
-00000000-0000-0000-0000-000000000000,rg-prod-data,cccccccc-cccc-cccc-cccc-cccccccccccc,Reader,11111111-1111-1111-1111-111111111111,rg-new-data,dddddddd-dddd-dddd-dddd-dddddddddddd,Reader
+Source,Target,Type
+cad9e0b6-be6e-4cb0-a4bc-3f81708540f9,cad9e0b6-be6e-4cb0-a4bc-3f81708540f9,SubscriptionId
+rg-poc-service-bus,demo-rebac-import,ResourceGroup
 ```
 
-**Campos obrigatórios:**
-- **SourceSubscriptionId**: GUID da subscription de origem
-- **SourceResourceGroup**: Nome do resource group de origem
-- **SourcePrincipalId**: GUID do principal (usuário/grupo/service principal) de origem
-- **SourceRoleDefinition**: Nome da role (ex: "Contributor", "Reader")
-- **TargetSubscriptionId**: GUID da subscription de destino
-- **TargetResourceGroup**: Nome do resource group de destino
-- **TargetPrincipalId**: GUID do principal de destino
-- **TargetRoleDefinition**: Nome da role de destino (geralmente igual à origem)
+**Nova Estrutura Simplificada:**
+- **Source**: Valor original a ser transformado
+- **Target**: Valor de destino para a transformação
+- **Type**: Categoria da transformação (SubscriptionId, ResourceGroup, etc.)
+
+**Tipos de Transformação Suportados:**
+- **SubscriptionId**: Transforma IDs de subscription
+- **ResourceGroup**: Mapeia resource groups de origem para destino
+- **PrincipalId**: Mapeia usuários/grupos/service principals
+- **RoleDefinition**: Transforma nomes de roles
+- **Scope**: Transforma escopos completos
+
+**Vantagens da Nova Estrutura:**
+- ✅ **Mais eficiente**: Evita transformações desnecessárias em campos vazios
+- ✅ **Tipo-específico**: Aplicação direcionada baseada no Type
+- ✅ **Menos redundância**: Reutiliza transformações para múltiplas permissões
+- ✅ **Mais legível**: Estrutura clara e concisa
 
 ## 🚀 Como Usar
 
-### Opção 1: Processo Completo (Exportar + Importar)
+### Opção 1: Script Simplificado (Recomendado)
 
 ```powershell
-# Execução completa com todas as validações
+# Execução otimizada com configuração centralizada
+.\Start-RbacMigrationSimple.ps1
+```
+
+**Características do Script Simplificado:**
+- ✅ Usa `config/config.json` automaticamente
+- ✅ Carrega `config/rbac-mapping-new.csv` automaticamente
+- ✅ Transformações otimizadas com Type columns
+- ✅ Logging estruturado e categorizado
+- ✅ Tratamento robusto de erros e conflitos
+- ✅ Detecção automática de permissões existentes
+
+### Opção 2: Script Completo (Flexibilidade Total)
+
+```powershell
+# Execução completa com parâmetros customizados
 .\Start-RbacMigration.ps1 `
     -ConfigFile "config\config.json" `
-    -CsvMappingFile "examples\rbac-mapping.csv" `
+    -CsvMappingFile "config\rbac-mapping-new.csv" `
     -Operation "Both" `
     -SkipExistingAssignments `
     -LogLevel "Information"
@@ -168,16 +200,27 @@ SourceSubscriptionId,SourceResourceGroup,SourcePrincipalId,SourceRoleDefinition,
 
 ## 📈 Logs e Relatórios
 
-### Arquivos de Log
-- **RbacImport-{timestamp}-{sessionId}-All.log**: Log completo
-- **RbacImport-{timestamp}-{sessionId}-Errors.log**: Apenas erros
-- **RbacImport-{timestamp}-{sessionId}-Success.log**: Apenas sucessos
-- **RbacImport-{timestamp}-{sessionId}-All.json**: Log estruturado em JSON
+### Sistema de Logging Estruturado
+```
+logs/
+├── RbacImport-{timestamp}-{sessionId}.log    # Log principal com todas as operações
+├── transformation-details.log                # Detalhes das transformações aplicadas
+└── error-analysis.log                       # Análise detalhada de erros
+```
 
-### Relatórios Gerados
-- **csv-validation-report.json**: Relatório de validação do CSV
-- **import-operations-report.json**: Relatório detalhado de todas as operações de importação
-- **rbac-export.json**: Arquivo de exportação das permissões RBAC
+### Categorias de Log Implementadas
+- **General**: Operações principais do sistema
+- **RbacExport**: Exportação de permissões da origem
+- **RbacImport**: Importação e aplicação no destino
+- **CsvProcessing**: Processamento e validação do CSV
+- **Authentication**: Operações de autenticação
+- **Transformation**: Detalhes das transformações aplicadas
+
+### Relatórios Automatizados
+- **Estatísticas de Transformação**: Quantas transformações foram aplicadas por tipo
+- **Permissões Duplicadas**: Lista de atribuições já existentes
+- **Conflitos de Importação**: Erros 403/409 tratados automaticamente
+- **Performance Metrics**: Tempo de execução e taxa de sucesso
 
 ## 🔒 Segurança
 
@@ -213,12 +256,19 @@ SourceSubscriptionId,SourceResourceGroup,SourcePrincipalId,SourceRoleDefinition,
 - Verifique se o nome da role está correto (case-sensitive)
 - Use nomes built-in como "Contributor", "Reader", "Owner"
 
-**4. "RoleAssignmentExists"**
-- Use `-SkipExistingAssignments` para pular atribuições existentes
-- Ou remova manualmente as atribuições duplicadas
+**4. "RoleAssignmentExists" ou "Conflict"**
+- O sistema agora detecta automaticamente conflitos e permissões existentes
+- Mensagens 403 Forbidden são tratadas como warnings, não erros fatais
+- Use WhatIfMode para simular sem aplicar mudanças
 
-**5. "TooManyRequests"**
-- O script já inclui retry logic e rate limiting
+**5. "Cannot find an overload for 'new'"**
+- Cache de módulos PowerShell - execute `Get-Module | Remove-Module -Force`
+- Reinicie a sessão PowerShell se o problema persistir
+- Use o script em uma nova sessão PowerShell isolada
+
+**6. "TooManyRequests"**
+- O script inclui retry logic com exponential backoff
+- APIs otimizadas reduzem o número de chamadas necessárias
 - Aguarde e execute novamente se persistir
 
 ### Verificação de Logs
@@ -232,30 +282,30 @@ Get-Content "logs\import-operations-report.json" | ConvertFrom-Json | Select-Obj
 
 ## 🔄 Workflow Recomendado
 
-1. **Planejamento**
-   - Identifique subscriptions e resource groups de origem
-   - Mapeie principals e roles para destino
-   - Crie Service Principal com permissões adequadas
+1. **Configuração Inicial**
+   - Configure Service Principal com permissões `User Access Administrator`
+   - Edite `config/config.json` com subscriptions de origem e destino
+   - Crie `config/rbac-mapping-new.csv` com transformações Source→Target
 
-2. **Preparação**
-   - Configure `config/config.json`
-   - Crie arquivo CSV de mapeamento
-   - Crie resource groups de destino se necessário
+2. **Teste de Conectividade**
+   - Execute script para verificar autenticação
+   - Confirme que consegue listar permissões da origem
+   - Valide se consegue acessar subscription de destino
 
-3. **Validação**
-   - Execute com `-ValidateOnly` primeiro
-   - Revise relatório de validação
-   - Corrija erros no CSV se necessário
+3. **Simulação (WhatIfMode)**
+   - Configure `"WhatIfMode": true` no config.json
+   - Execute `Start-RbacMigrationSimple.ps1`
+   - Analise logs e transformações planejadas
 
-4. **Teste**
-   - Execute em ambiente de desenvolvimento/teste
-   - Verifique logs e relatórios
-   - Valide permissões aplicadas
+4. **Execução Controlada**
+   - Configure `"WhatIfMode": false`
+   - Execute migração real
+   - Monitore logs para conflitos e erros 403 (tratados automaticamente)
 
-5. **Produção**
-   - Execute o processo completo
-   - Monitore logs em tempo real
-   - Valide resultado final
+5. **Validação Pós-Migração**
+   - Verifique permissões aplicadas no destino
+   - Confirme que apenas novas permissões foram criadas
+   - Analise estatísticas de transformação nos logs
 
 ## 📚 Exemplos Adicionais
 
