@@ -1,0 +1,2 @@
+SourceSubscriptionId,SourceResourceGroup,TargetSubscriptionId,TargetResourceGroup
+cad9e0b6-be6e-4cb0-a4bc-3f81708540f9,rg-poc-service-bus,cad9e0b6-be6e-4cb0-a4bc-3f81708540f9,demo-rebac-03

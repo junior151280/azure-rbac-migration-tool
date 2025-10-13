@@ -12,6 +12,9 @@ Uma automação PowerShell para migrar permissões RBAC entre subscriptions do A
 - **Logging Estruturado**: Sistema de logging categorizado com diferentes níveis
 - **Validação Inteligente**: Verifica duplicatas e valida permissões antes da aplicação
 - **Relatórios Detalhados**: Estatísticas completas e rastreamento de transformações
+- **Migração RG→RG Recursiva**: Novo fluxo dedicado para exportar e importar permissões de um Resource Group incluindo todos os recursos internos sem criar recursos inexistentes
+- **Dois Arquivos de Mapping Específicos**: Separação clara entre mapeamento do RG e mapeamento de recursos/principals/roles (renomeação granular)
+- **WhatIf Avançado**: Simula criação e fornece relatório com contagem por nível (RG vs recurso) e motivos de skip
 
 ## 🏗️ Estrutura do Projeto
 
@@ -152,6 +155,30 @@ rg-poc-service-bus,demo-rebac-import,ResourceGroup
     -LogLevel "Information"
 ```
 
+### Opção 3: Migração RG → RG Recursiva (Dois CSVs)
+
+Pode executar um fluxo dedicado para copiar permissões de um RG origem para outro RG (mesma ou outra subscription), aplicando renomeação opcional de recursos, principals e roles.
+
+```powershell
+./Start-RgRbacMigration.ps1 `
+  -SourceSubscriptionId "00000000-0000-0000-0000-000000000000" `
+  -SourceResourceGroup "rg-origem" `
+  -TargetSubscriptionId "11111111-1111-1111-1111-111111111111" `
+  -TargetResourceGroup "rg-destino" `
+  -RgMappingFile "config/rg-mapping.csv" `
+  -ResourceMappingFile "config/resource-mapping.csv" `
+  -PreserveHierarchy `
+  -WhatIf
+```
+
+Remova `-WhatIf` para aplicar de fato. Use `-PreserveHierarchy` para manter a estrutura de scopes (ex: `/providers/Microsoft.Storage/storageAccounts/st1`). Sem esse switch, todas as permissões são trazidas para o escopo do próprio RG destino.
+
+Relatório gerado em `output/rg-rbac-import-report.json` contendo:
+- `totals`: created, skipped, errors, processed
+- `levelStats`: estatísticas segmentadas por `resourceGroup` e `resource`
+- `missingResources`: lista de recursos que não existem no destino (não são criados)
+- `items`: ações detalhadas (`Created`, `WhatIfCreate`, `SkipDuplicate`, `SkipRoleNotFound`, `SkipMissingResource` etc.)
+
 ### Opção 2: Apenas Exportação
 
 ```powershell
@@ -197,6 +224,10 @@ rg-poc-service-bus,demo-rebac-import,ResourceGroup
 | `SkipExistingAssignments` | Switch | false | Pula atribuições que já existem |
 | `MaxRetryAttempts` | Int | 3 | Máximo de tentativas em caso de erro |
 | `LogLevel` | String | "Information" | Nível de log: Error, Warning, Information, Verbose, Debug |
+| `PreserveHierarchy` | Switch | false | (RG→RG) Mantém estrutura de recursos originais |
+| `RgMappingFile` | String | - | (RG→RG) CSV de mapeamento do RG origem para destino |
+| `ResourceMappingFile` | String | - | (RG→RG) CSV de mapeamento de recursos/principals/roles |
+| `WhatIf` | Switch | false | (RG→RG) Simula import reportando ações |
 
 ## 📈 Logs e Relatórios
 
@@ -316,6 +347,92 @@ $clientSecret = "seu-client-secret"
 ```
 
 ### Executar apenas para uma subscription
+### Migração RG → RG com Flatten (sem hierarquia)
+```powershell
+./Start-RgRbacMigration.ps1 `
+  -SourceSubscriptionId $subSrc `
+  -SourceResourceGroup $rgSrc `
+  -TargetSubscriptionId $subDst `
+  -TargetResourceGroup $rgDst `
+  -RgMappingFile config/rg-mapping.csv `
+  -ResourceMappingFile config/resource-mapping.csv `
+  -WhatIf
+```
+
+### Migração RG → RG preservando hierarquia
+```powershell
+./Start-RgRbacMigration.ps1 `
+  -SourceSubscriptionId $subSrc `
+  -SourceResourceGroup $rgSrc `
+  -TargetSubscriptionId $subDst `
+  -TargetResourceGroup $rgDst `
+  -RgMappingFile config/rg-mapping.csv `
+  -ResourceMappingFile config/resource-mapping.csv `
+  -PreserveHierarchy
+```
+
+### Exemplo de relatório (trecho)
+```json
+{
+  "totals": { "created": 5, "skipped": 3, "errors": 0, "processed": 8 },
+  "levelStats": {
+    "resourceGroup": { "processed": 2, "created": 2, "skipped": 0, "errors": 0 },
+    "resource": { "processed": 6, "created": 3, "skipped": 3, "errors": 0 }
+  },
+  "missingResources": [
+    "/subscriptions/1111/resourceGroups/rg-destino/providers/Microsoft.ServiceBus/namespaces/ns1"
+  ]
+}
+```
+
+## 📑 Estrutura dos Dois CSVs (RG→RG)
+
+### 1. rg-mapping.csv
+
+Campos obrigatórios (uma única linha):
+```csv
+SourceSubscriptionId,SourceResourceGroup,TargetSubscriptionId,TargetResourceGroup
+00000000-0000-0000-0000-000000000000,rg-origem,11111111-1111-1111-1111-111111111111,rg-destino
+```
+
+Uso: Determina a substituição básica do prefixo de escopo.
+
+### 2. resource-mapping.csv
+
+Colunas: `SourceScopeRelative,TargetScopeRelative,PrincipalRemap,RoleRemap`
+
+```csv
+SourceScopeRelative,TargetScopeRelative,PrincipalRemap,RoleRemap
+/providers/Microsoft.Storage/storageAccounts/appfiles,/providers/Microsoft.Storage/storageAccounts/appfiles,,
+/providers/Microsoft.KeyVault/vaults/kvold,/providers/Microsoft.KeyVault/vaults/kvnew,,
+/providers/Microsoft.Web/sites/webappA,/providers/Microsoft.Web/sites/webappB,11111111-2222-3333-4444-555555555555,
+/,,,
+```
+
+Regras:
+- `SourceScopeRelative` deve iniciar com `/` ou ser `/` (que representa o próprio RG)
+- `TargetScopeRelative` vazio → usa mesmo relativo origem
+- `PrincipalRemap` (opcional) substitui `principalId`
+- `RoleRemap` suporta:
+  - GUID puro (ex: `d73bb868-a0df-4d4d-bd69-98a00b01fccb`)
+  - ID completo `/subscriptions/{sub}/providers/Microsoft.Authorization/roleDefinitions/{guid}`
+  - (Nome de role ainda não suportado diretamente na importação RG→RG)
+- Linha com apenas `/` pode redefinir comportamento para nível RG
+
+Validações no processo de import:
+- Role inexistente → `SkipRoleNotFound`
+- Recurso destino não existe → `SkipMissingResource` (não tenta criar)
+- Assignment já existe → `SkipDuplicate`
+
+### Hierarquia vs Flatten
+- Com `-PreserveHierarchy`: scopes reconstruídos no destino mantendo sufixo relativo.
+- Sem `-PreserveHierarchy`: todos assignments aplicados diretamente no escopo do RG destino.
+
+### Dicas de Qualidade
+- Ordene `resource-mapping.csv` por profundidade (mais específicos primeiro) se planejar fazer revisões manuais.
+- Use GUIDs de principal confirmados (Azure AD) antes da execução real.
+- Execute sempre com `-WhatIf` para validar cobertura antes da execução efetiva.
+
 Edite o `config.json` para incluir apenas a subscription desejada.
 
 ### Processamento em lotes grandes

@@ -275,7 +275,8 @@ class RbacImporter {
             try {
                 $this.Logger.LogVerbose([LogCategory]::RbacImport, "Tentativa $attempt de $maxAttempts", "Criando atribuição RBAC", @{})
                 
-                $success = $this.RbacManager.CreateRbacAssignment($scope, $principalId, $roleDefinitionId)
+                $payload = @{ properties = @{ principalId = $principalId; roleDefinitionId = $roleDefinitionId } }
+                $success = $this.RbacManager.CreateRbacAssignment($scope, $payload)
                 
                 if ($success) {
                     return $true
